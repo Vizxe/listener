@@ -1,0 +1,304 @@
+/* Home page. Shares the viewer's palette from viewer.css. */
+
+body.home {
+  display: block;
+  height: auto;
+  min-height: 100%;
+}
+
+.brand {
+  font-weight: 700;
+  letter-spacing: .02em;
+}
+
+.home-body {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 26px 20px 80px 20px;
+}
+
+.home h1 { font-size: 24px; margin: 0 0 6px 0; }
+.home h2 {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: .09em;
+  color: var(--fg-dim);
+  margin: 28px 0 10px 0;
+}
+
+.lede { color: var(--fg-dim); margin: 0 0 18px 0; max-width: 62ch; line-height: 1.6; }
+.small { font-size: 12.5px; }
+
+.view-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.view-head h1 { flex: 1 1 auto; }
+
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #10131a;
+  font-weight: 650;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+.btn.primary:hover { filter: brightness(1.08); }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 14px;
+}
+
+.course-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  padding: 16px;
+  cursor: pointer;
+}
+
+.course-card:hover { border-color: var(--accent-dim); }
+.course-card h3 { margin: 0 0 3px 0; font-size: 19px; }
+.course-card .sub { color: var(--fg-dim); font-size: 13.5px; margin-bottom: 10px; }
+.course-card .stats { display: flex; gap: 14px; font-size: 12.5px; color: var(--fg-dim); }
+.course-card .pill {
+  background: #3a2a1c;
+  border: 1px solid var(--warn);
+  color: var(--warn);
+  border-radius: 999px;
+  padding: 0 8px;
+  font-size: 11.5px;
+}
+
+.cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 26px;
+}
+
+@media (max-width: 860px) { .cols { grid-template-columns: 1fr; } }
+
+.drop {
+  border: 2px dashed var(--line);
+  border-radius: var(--radius);
+  padding: 26px 18px;
+  text-align: center;
+  background: var(--bg-raised);
+  transition: border-color .12s, background-color .12s;
+}
+
+.drop p { margin: 4px 0; }
+.drop.over { border-color: var(--accent); background: rgba(110,168,254,.08); }
+
+.progress {
+  height: 6px;
+  background: var(--bg-sunken);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-top: 10px;
+}
+
+.bar-fill { height: 100%; width: 0%; background: var(--accent); transition: width .15s linear; }
+
+.msg { font-size: 13px; color: var(--fg-dim); min-height: 18px; margin: 8px 0 0 0; }
+.msg.ok { color: #7ee0b8; }
+.msg.err { color: #f0bcbc; }
+
+.field { display: block; margin-bottom: 12px; border: none; padding: 0; }
+.field > span {
+  display: block;
+  font-size: 12px;
+  color: var(--fg-dim);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  margin-bottom: 5px;
+}
+
+.field select, .field input {
+  width: 100%;
+  background: var(--bg-sunken);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 14px;
+}
+
+.field select:focus, .field input:focus { outline: none; border-color: var(--accent); }
+
+.checks { display: flex; flex-wrap: wrap; gap: 10px 16px; }
+.checks label, .check-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13.5px;
+  cursor: pointer;
+  /* Two-word stage names ("Course notes", "Search index") would otherwise
+     wrap between the box and half of their own label. */
+  white-space: nowrap;
+}
+
+.check-inline { margin-bottom: 10px; }
+
+.item {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  padding: 11px 13px;
+  margin-bottom: 9px;
+}
+
+.item-head { display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap; }
+.item-title { font-weight: 650; }
+.item-actions { margin-left: auto; display: flex; gap: 7px; }
+
+.stagedots { display: flex; gap: 5px; margin-top: 7px; flex-wrap: wrap; }
+.dot {
+  font-size: 11px;
+  border-radius: 999px;
+  padding: 1px 8px;
+  border: 1px solid var(--line);
+  color: var(--fg-dim);
+}
+.dot.on { color: #7ee0b8; border-color: #2c5a48; }
+
+.job .log {
+  margin-top: 8px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 7px 9px;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 11.5px;
+  color: var(--fg-dim);
+  max-height: 150px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.status-tag { font-size: 11.5px; border-radius: 999px; padding: 1px 8px; border: 1px solid var(--line); }
+.status-tag.running { color: var(--accent); border-color: var(--accent-dim); }
+.status-tag.done { color: #7ee0b8; border-color: #2c5a48; }
+.status-tag.failed { color: #f0bcbc; border-color: #5c2c2c; }
+.status-tag.queued, .status-tag.cancelled { color: var(--fg-dim); }
+
+#notation {
+  width: 100%;
+  min-height: 320px;
+  background: var(--bg-sunken);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.55;
+  padding: 12px;
+  resize: vertical;
+}
+
+#notation:focus { outline: none; border-color: var(--accent); }
+
+.row { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+
+.busy {
+  color: var(--accent);
+  font-size: 13px;
+  border: 1px solid var(--accent-dim);
+  border-radius: 999px;
+  padding: 2px 10px;
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(8,10,14,.86);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 60;
+  padding: 20px;
+}
+
+.modal-box {
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 22px;
+  width: 100%;
+  max-width: 420px;
+}
+
+.modal-box h2 { margin-top: 0; }
+
+.empty {
+  color: var(--fg-dim);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+  font-size: 13.5px;
+}
+
+/* ---------------------------------------------------------------- phone --- */
+
+/* Grid and flex children default to min-width:auto, so a wide child -- a
+   <select> is sized by its longest option -- stops the track shrinking and
+   pushes the whole page sideways. This is the fix for that. */
+.cols > .col { min-width: 0; }
+.field select, .field input, #notation, .log { max-width: 100%; }
+.item, .course-card, .drop { min-width: 0; overflow-wrap: anywhere; }
+
+@media (max-width: 720px) {
+  .home-body { padding: 16px 14px 64px 14px; }
+  .home h1 { font-size: 20px; }
+  .home h2 { margin: 22px 0 8px 0; }
+  .lede { margin-bottom: 14px; }
+
+  .bar { padding: 9px 12px; gap: 8px; }
+  .brand { font-size: 15px; }
+
+  .view-head { gap: 10px; }
+  .view-head h1 { flex: 1 1 100%; order: -1; }
+
+  .grid { grid-template-columns: 1fr; gap: 10px; }
+  .cols { gap: 18px; }
+
+  .drop { padding: 20px 12px; }
+  .drop p { font-size: 14px; }
+
+  .item-head { gap: 6px; }
+  .item-actions { margin-left: 0; width: 100%; }
+  .item-actions .btn { flex: 1 1 auto; text-align: center; }
+
+  .checks { gap: 10px 12px; }
+  #notation { min-height: 240px; font-size: 12.5px; }
+  .log { max-height: 220px; }
+
+  .modal-box { padding: 18px; }
+}
+
+/* Touch targets. A 24px button is a miss on a phone; 44px is the usual floor,
+   and `pointer: coarse` applies it only where a finger is doing the pointing. */
+@media (pointer: coarse) {
+  .btn, .segbtn, select, .fixbtn {
+    min-height: 44px;
+    padding-top: 0;
+    padding-bottom: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .checks label, .check-inline { min-height: 40px; }
+  .checks input[type="checkbox"], .check-inline input[type="checkbox"] {
+    width: 20px; height: 20px;
+  }
+  .course-card { padding: 18px; }
+}

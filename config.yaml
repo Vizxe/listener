@@ -1,0 +1,241 @@
+# ============================================================================
+# Lecture Processing Pipeline — central configuration.
+#
+# Hardware note: this machine has an Intel Arc B580 (12 GB), not an NVIDIA
+# card. Stage 1 runs on the Arc through OpenVINO. faster-whisper/CTranslate2
+# has no Intel GPU backend and is CPU-only here.
+# ============================================================================
+
+paths:
+  audio:   audio      # audio/<course>/<file>
+  data:    data       # data/<course>/<lecture>/
+  index:   index      # index/<course>/
+  courses: courses    # courses/<course>/notation.md, glossary.json
+  viewer:  viewer
+  logs:    logs
+
+# ---------------------------------------------------------------------------
+# Phase A — Stage 1 transcription.
+# ---------------------------------------------------------------------------
+asr:
+  # openvino       -> Intel Arc GPU. ~25x realtime. No per-word confidence.
+  # faster_whisper -> CPU only. Slow, but reports per-word confidence.
+  backend: openvino
+
+  # For the openvino backend this is an OpenVINO IR model: either a HuggingFace
+  # repo id (downloaded on first use) or a local directory.
+  #   OpenVINO/whisper-large-v3-turbo-fp16-ov   fast, the default
+  #   OpenVINO/whisper-large-v3-fp16-ov         slower, best quality
+  #   OpenVINO/whisper-large-v3-turbo-int8-ov   fastest, slight quality cost
+  # For the faster_whisper backend use a plain name instead: large-v3, tiny.
+  model: OpenVINO/whisper-large-v3-fp16-ov
+
+  language: en
+  beam_size: 5
+  vad_filter: true
+  word_timestamps: true
+
+  # The viewer seeks by word, so a segment row must agree with the words shown
+  # in it. OpenVINO derives segment and word times separately and they drift,
+  # so segments get re-cut from the word stream.
+  #   auto   -> re-cut only when the backend reports unreliable segment times
+  #   always -> re-cut regardless    never -> keep backend segments as-is
+  segmentation:
+    rebuild_from_words: auto
+    max_seconds: 18.0     # hard cap on a row's length
+    min_seconds: 2.0      # do not cut rows shorter than this
+    gap_seconds: 0.8      # a silence this long ends a row
+
+  # Whisper's prompt window is ~224 tokens; anything past that is silently
+  # dropped, so the notation/glossary prompt gets truncated to fit.
+  initial_prompt_max_chars: 850
+
+  openvino:
+    device: GPU              # GPU | CPU | NPU | AUTO
+    fallback_device: CPU     # used if the GPU pipeline fails to compile
+    cache_dir: models/ov-cache
+    # hotwords biases every internal 30s window, not just the first one the
+    # way initial_prompt does. On a 90-minute lecture this matters a lot.
+    use_hotwords: true
+
+  faster_whisper:
+    device: cpu              # CTranslate2 has no Intel GPU backend
+    compute_type: int8
+    cpu_threads: 8
+    num_workers: 1
+    download_root: models/faster-whisper
+
+preprocess:
+  enabled: true
+  sample_rate: 16000
+  # highpass kills HVAC rumble, afftdn is a light denoise, loudnorm evens out
+  # the lecturer walking toward and away from the mic.
+  filters: "highpass=f=60,afftdn=nf=-25,loudnorm=I=-16:TP=-1.5:LRA=11"
+  keep_wav: true
+
+  # The file the viewer plays. NOT the original MP3: browsers seeking a long
+  # VBR MP3 use its 100-entry Xing table and land seconds away from the time
+  # they report, which desyncs the word highlight after every click. Measured
+  # on lecture 11: MP3 seeks off by 1.85s on average, 5.76s at worst; Ogg Opus
+  # 0.02s. source: preprocessed (denoised, level-matched, guaranteed to share
+  # the transcript's timeline) or original.
+  viewer_audio:
+    enabled: true
+    codec: libopus
+    bitrate: 32k
+    ext: opus
+    source: preprocessed
+    extra_args: ["-vbr", "on", "-application", "voip"]
+
+# ---------------------------------------------------------------------------
+# Phase B — Stages 2, 3, 6.
+# Swap base_url/model for a cloud endpoint freely; nothing downstream cares.
+# ---------------------------------------------------------------------------
+llm:
+  base_url: "http://localhost:1234/v1"
+  api_key:  "lm-studio"
+  model:    "qwen/qwen3.5-9b"
+  temperature: 0.0
+  max_tokens: 4096
+  timeout_s: 300
+  # qwen3.5 is a reasoning model; thinking roughly doubles latency for
+  # no gain on a constrained extraction task.
+  enable_thinking: false
+
+# ---------------------------------------------------------------------------
+# Stage 2C -- course notes. A second, stronger model reached through
+# OpenRouter, given the whole lecture at once.
+#
+# Everything else in this project runs locally; this is the one stage that
+# leaves the machine, so it is opt-in per run rather than part of the default
+# pipeline. OpenRouter is OpenAI-compatible, so the same client drives it.
+# ---------------------------------------------------------------------------
+openrouter:
+  base_url: "https://openrouter.ai/api/v1"
+  # Leave api_key empty and export OPENROUTER_API_KEY instead. config.yaml is
+  # tracked in git, and a key committed once is a key leaked forever.
+  api_key: ""
+  api_key_env: OPENROUTER_API_KEY
+  # Any id from https://openrouter.ai/models. This stage reads a whole
+  # lecture in one call, so pick something with a large context window.
+  model: "anthropic/claude-sonnet-4.5"
+  # Not 0.0: this is a writing task, not an extraction task, and a completely
+  # greedy decode makes the prose repetitive.
+  temperature: 0.2
+  max_tokens: 16000
+  timeout_s: 600
+  # LM Studio's qwen thinking switch is a chat-template argument that a cloud
+  # model has no idea what to do with, so it is only sent when asked for.
+  send_thinking_flag: false
+  # OpenRouter forwards `json_schema` only to models that implement structured
+  # outputs and errors on the ones that do not. Turn this off for a model that
+  # refuses it -- the reply is still parsed out of whatever comes back.
+  structured_outputs: true
+  # Optional, and only used by OpenRouter's public leaderboards.
+  headers:
+    referer: ""
+    title: "Lecture listener"
+
+# Stage 2C -- course notes pass. One call per lecture, not a window sweep:
+# the point of this stage is the coherence you only get from seeing the whole
+# lecture at once, which is exactly what Stage 2N cannot do.
+course_notes:
+  # Which config section above holds the endpoint. Point it at `llm` to run
+  # this stage locally instead, at some cost in quality.
+  llm_section: openrouter
+  max_tokens: 16000
+  # The transcript handed over, in characters. ~4 chars per token, so 400k is
+  # roughly 100k tokens; a 90-minute lecture is nowhere near that.
+  max_transcript_chars: 400000
+  transcript_marker_s: 60
+  # A section claiming notes that do not exist gets no timestamp from them.
+  # Below this match ratio its anchor quote is not believed either, and the
+  # section is pinned to where the previous one ended, and flagged.
+  min_anchor_match: 0.35
+
+embeddings:
+  base_url: "http://localhost:1234/v1"
+  api_key:  "lm-studio"
+  model:    "text-embedding-nomic-embed-text-v1.5"
+  batch_size: 16
+
+# Stage 2 — math pass. Window stays small even though context allows more;
+# spend the spare context on history instead.
+math:
+  window_s: 90
+  overlap_s: 20
+  history_s: 300
+  max_retries: 1
+  # An item whose source_text cannot be found in the window did not come
+  # from the audio, so it has no honest timestamp. Below this match ratio
+  # the item is dropped (and logged).
+  min_source_match: 0.35
+
+# Stage 2N — notes pass. Turns the transcript into readable student notes.
+# Windows are much larger than the math pass: summarising needs context, where
+# extraction needs precision.
+notes:
+  window_s: 360
+  overlap_s: 60
+  max_tokens: 6000
+  # Hand the model the WHOLE lecture as background while still asking it to
+  # write only its own window. It costs prompt tokens but the notes stop
+  # reading like ten disconnected fragments. Safe here, unlike in the math
+  # pass, because a note's timestamp comes from a quote located inside the
+  # window -- drift outside it is detected rather than believed.
+  # Set LM Studio's context to 32k+ before turning this on.
+  #   window     -- the window only, nothing else
+  #   neighbours -- plus the minutes either side
+  #   preceding  -- plus everything before it, and the notes written for it
+  #                 (default: best measured results, see README)
+  #   full       -- plus the entire lecture
+  # Measured on lecture 11, "full" made the notes worse rather than better:
+  # see README, "How much the model should see".
+  context_mode: preceding
+  neighbour_seconds: 360        # how far either side, for `neighbours`
+  max_notes_context_chars: 30000  # notes-so-far budget, for `preceding`
+  max_context_chars: 120000     # ~30k tokens; longer lectures keep head+tail
+  background_marker_s: 120      # a [mm:ss] marker every two minutes
+  # Same provenance rule as the math pass: a note whose anchor quote is not in
+  # the window gets its timestamp from the window instead, and is flagged.
+  min_anchor_match: 0.35
+
+# Stage 3 — structure pass. Groups the lecture into chapters, reading the
+# notes rather than the raw transcript: they are already 3.4x shorter and
+# carry headings and time spans, so the whole lecture fits in one prompt and
+# there is nothing to chunk or reconcile.
+structure:
+  max_tokens: 5000
+  # Chapter granularity. Without an explicit target the model swings between
+  # 2 and 8 chapters on the same lecture, which makes the strip unusable.
+  minutes_per_chapter: 7
+  min_chapters: 4
+  max_chapters: 12
+
+# Stage 6 — hybrid search.
+search:
+  rrf_k: 60
+  top_k: 10
+  # A chunk is one chapter. Stage 3 sometimes returns a 20-minute chapter,
+  # which is far too much text for one embedding to represent, so anything
+  # longer than this is split at note-block boundaries -- still semantic
+  # units, never arbitrary token windows.
+  max_chunk_seconds: 420
+
+# The backend the viewer talks to.
+server:
+  # 0.0.0.0 makes the site reachable from your phone or laptop over Tailscale.
+  # It also binds every other interface the machine has, and this server can
+  # accept uploads and start jobs -- so binding off-loopback turns on an
+  # access key by default. See `auth` below.
+  host: "0.0.0.0"
+  port: 8000
+  # auto -> require a key whenever host is not a loopback address
+  # off  -> never require one (only sane on 127.0.0.1)
+  # <string> -> use exactly this key
+  auth: auto
+  uploads:
+    max_mb: 2048
+    # Anything ffmpeg can open. Video is accepted and the audio track taken.
+    allowed_ext: [".mp3", ".m4a", ".wav", ".flac", ".opus", ".ogg", ".aac",
+                  ".wma", ".mp4", ".m4b", ".mkv", ".webm", ".mov", ".avi"]

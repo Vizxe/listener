@@ -1,0 +1,16 @@
+# ---- always ----
+pyyaml>=6.0
+
+# ---- Phase A (Stage 1) ----
+# openvino backend: runs Whisper on the Intel Arc GPU. This is the default.
+openvino>=2025.0
+openvino-genai>=2025.0
+numpy>=1.26
+
+# faster_whisper backend: CPU only here (CTranslate2 has no Intel GPU
+# backend), but it is the only backend that reports per-word confidence.
+faster-whisper>=1.0.3
+
+# ---- Phase B (Stages 2, 3, 6) ----
+openai>=1.40
+rank-bm25>=0.2.2

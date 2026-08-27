@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lecture viewer</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css">
+<link rel="stylesheet" href="viewer.css">
+</head>
+<body>
+
+<header class="bar">
+  <div class="bar-left">
+    <a class="btn" href="index.html" title="All courses">&larr;</a>
+    <label for="lecture-picker" class="sr-only">Lecture</label>
+    <select id="lecture-picker" title="Choose a lecture"></select>
+    <span id="lecture-meta" class="meta"></span>
+  </div>
+  <div class="bar-right">
+    <button id="open-library" class="btn" hidden title="Search every lecture">Search &amp; index</button>
+    <button id="copy-link" class="btn" title="Copy a deep link to the current time">Copy link at time</button>
+  </div>
+</header>
+
+<div id="chapter-strip" class="strip" hidden></div>
+
+<!-- Phone only: one pane at a time gets the whole screen. Folds the
+     right pane's Notes/Formulas choice into the same control, so there
+     is one place to switch rather than two. -->
+<nav id="mobile-tabs" class="mtabs">
+  <button class="mtab" data-pane="transcript">Transcript</button>
+  <button class="mtab is-active" data-pane="notes">Notes</button>
+  <button class="mtab" data-pane="course">Course</button>
+  <button class="mtab" data-pane="math">Formulas</button>
+</nav>
+
+<div id="status" class="status" hidden></div>
+
+<div id="library" class="library" hidden>
+  <div class="library-head">
+    <div class="segmented">
+      <button id="lib-tab-search" class="segbtn is-active" role="tab">Search</button>
+      <button id="lib-tab-index" class="segbtn" role="tab">Concept index</button>
+    </div>
+    <input id="lib-q" type="search" placeholder="Search across every lecture&hellip;" autocomplete="off">
+    <span id="lib-note" class="meta"></span>
+    <button id="lib-close" class="btn">Close</button>
+  </div>
+  <div id="lib-body" class="library-body"></div>
+</div>
+
+<main class="panes">
+  <section class="pane pane-transcript">
+    <div class="pane-head">
+      <h2>Transcript</h2>
+      <span id="word-count" class="meta"></span>
+    </div>
+    <div id="transcript" class="transcript" tabindex="0"></div>
+    <button id="jump-to-current" class="jump" hidden>Jump to current &darr;</button>
+  </section>
+
+  <section class="pane pane-right" id="pane-right">
+    <div class="pane-head">
+      <div class="segmented" role="tablist">
+        <button id="tab-notes" class="segbtn is-active" role="tab">Notes</button>
+        <button id="tab-course" class="segbtn" role="tab" title="Written up from the whole lecture">Course</button>
+        <button id="tab-math" class="segbtn" role="tab">Formulas</button>
+      </div>
+      <span id="right-count" class="meta"></span>
+      <label class="toggle" id="flagged-wrap" hidden title="Show only items the model was unsure about">
+        <input type="checkbox" id="only-flagged"> flagged only
+      </label>
+    </div>
+    <div id="notes" class="notes"></div>
+    <div id="course" class="notes course" hidden></div>
+    <div id="math" class="math" hidden></div>
+  </section>
+</main>
+
+<footer class="player">
+  <audio id="audio" controls preload="metadata"></audio>
+  <div class="shortcuts">
+    <kbd>space</kbd> play/pause
+    <kbd>&larr;</kbd><kbd>&rarr;</kbd> &plusmn;5s
+    <kbd>shift</kbd>+<kbd>&larr;</kbd><kbd>&rarr;</kbd> &plusmn;30s
+  </div>
+</footer>
+
+<script src="vendor/katex/katex.min.js"></script>
+<script src="viewer.js"></script>
+</body>
+</html>

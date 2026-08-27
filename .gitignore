@@ -1,0 +1,17 @@
+.venv/
+models/
+tools/
+logs/
+__pycache__/
+*.pyc
+
+# Derived artifacts. Regenerate with the pipeline; don't version them.
+data/*/*/audio16k.wav
+data/*/*/audio.opus
+data/*/*/lecture.js
+data/*/lectures.js
+index/*/vectors/
+logs/jobcfg/
+audio/*/.upload-*.part
+# Holds your OpenRouter key. Never commit it.
+start.cmd
