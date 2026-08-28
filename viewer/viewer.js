@@ -29,6 +29,7 @@
     flaggedWrap: document.getElementById("flagged-wrap"),
     onlyFlagged: document.getElementById("only-flagged"),
     strip:       document.getElementById("chapter-strip"),
+    stripNow:    document.getElementById("chapter-now"),
     openLibrary: document.getElementById("open-library"),
     library:     document.getElementById("library"),
     libQ:        document.getElementById("lib-q"),
@@ -62,6 +63,7 @@
   var stripSegs = [];
   var playhead = null;
   var curChapter = -1;
+  var nowDot = null, nowTime = null, nowTitle = null;
   var autoScroll = true;
 
   // ------------------------------------------------------------- helpers --
@@ -888,6 +890,7 @@
           if (curChapter >= 0 && stripSegs[curChapter]) stripSegs[curChapter].classList.remove("current");
           if (ci >= 0 && stripSegs[ci]) stripSegs[ci].classList.add("current");
           curChapter = ci;
+          setChapterCaption(ci);
         }
       }
 
@@ -1019,6 +1022,7 @@
     var total = lecture.duration || (chapters.length ? chapters[chapters.length - 1].end : 0);
     if (!chapters.length || !total) {
       els.strip.hidden = true;
+      els.stripNow.hidden = true;
       return;
     }
     els.strip.hidden = false;
@@ -1045,6 +1049,37 @@
     playhead = document.createElement("div");
     playhead.className = "strip-playhead";
     els.strip.appendChild(playhead);
+
+    // Built once per lecture; the tick loop only rewrites its text.
+    els.stripNow.innerHTML = "";
+    nowDot = document.createElement("span");
+    nowDot.className = "strip-now-dot";
+    nowTime = document.createElement("span");
+    nowTime.className = "strip-now-time";
+    nowTitle = document.createElement("span");
+    nowTitle.className = "strip-now-title";
+    els.stripNow.appendChild(nowDot);
+    els.stripNow.appendChild(nowTime);
+    els.stripNow.appendChild(nowTitle);
+    setChapterCaption(findChapter(0));
+  }
+
+  // Names the chapter under the playhead, for the screens where the strip
+  // cannot show its own labels. CSS decides whether this is visible at all,
+  // so there is no width check here.
+  function setChapterCaption(i) {
+    var chapters = (lecture && lecture.chapters) || [];
+    if (!chapters.length || !nowTitle) {
+      els.stripNow.hidden = true;
+      return;
+    }
+    // Before the first chapter starts, name the one about to begin rather
+    // than leaving the bar empty.
+    var ch = chapters[i < 0 ? 0 : i];
+    els.stripNow.hidden = false;
+    nowDot.className = "strip-now-dot " + (ch.type || "aside");
+    nowTime.textContent = hhmmss(ch.start);
+    nowTitle.textContent = ch.title;
   }
 
   els.strip.addEventListener("click", function (ev) {

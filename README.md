@@ -367,15 +367,26 @@ the whole point of binding `0.0.0.0` is reading it away from the machine.
 **The viewer shows one pane at a time.** Two panes side by side works at
 1280px; on a 375px screen it gives each about 330px of height, which is not
 enough for either. A tab bar under the chapter strip switches between
-Transcript, Notes and Formulas, and the chosen one gets the full height. It
-also folds in the right pane's own Notes/Formulas control, so there is one
+Transcript, Notes, Course and Formulas, and the chosen one gets the full
+height. It also folds in the right pane's own tab control, so there is one
 place to switch rather than two. On a wide screen the bar is hidden and both
 panes are visible as before.
 
-Other phone-specific details: chapter labels drop off the strip below 520px
-where three chapters leave no room for words, tap targets are 44px under
-`pointer: coarse`, and the search box is 16px because anything smaller makes
-iOS zoom the page when you focus it.
+**The chapter strip names itself underneath.** Labels drop off the strip below
+520px, where a seven-minute chapter of a fifty-minute lecture gets about 50px
+-- room for five characters. The original fallback was the `title` tooltip,
+which is exactly the thing a touch screen does not have, so on a phone the
+chapter titles were unreachable rather than merely abbreviated. A caption bar
+under the strip now names the chapter under the playhead -- coloured dot, start
+time, full title -- and follows playback. It appears at 820px, the phone
+breakpoint, not at 520px: in between, the labels survive but ellipsise down to
+a word or two, and there is still no tooltip to recover the rest from. Tapping
+a segment seeks into it, so tapping along the strip reads it out chapter by
+chapter.
+
+Other phone-specific details: tap targets are 44px under `pointer: coarse`,
+and the search box is 16px because anything smaller makes iOS zoom the page
+when you focus it.
 
 One layout trap worth recording. The course page scrolled sideways on a phone,
 and the cause was the transcription-model `<select>`: a select is sized by its
@@ -399,6 +410,7 @@ fits but scrolls sideways anyway.
 | Share a moment | "Copy link at time" |
 | Jump to a note or formula | click it |
 | Jump to a chapter | click the strip at the top |
+| See a chapter's title on a phone | the caption under the strip; it follows playback |
 | Switch panes | NOTES / COURSE / FORMULAS toggle |
 | Show only unsure conversions | "flagged only" checkbox (Formulas view) |
 | Search every lecture | `/` or the "Search & index" button (needs the backend) |

@@ -615,14 +615,15 @@ kbd {
   letter-spacing: .01em;
 }
 
-/* Chapter types get their own colour, per the brief. */
-.strip-seg.admin      { background: #5b6472; }
-.strip-seg.motivation { background: #d9a441; }
-.strip-seg.definition { background: #4fbf90; }
-.strip-seg.theorem    { background: #8f7fe8; }
-.strip-seg.proof      { background: #5b9de0; }
-.strip-seg.example    { background: #e0854a; }
-.strip-seg.aside      { background: #7d8590; }
+/* Chapter types get their own colour, per the brief. The caption's dot is
+   listed alongside each so the two can never drift apart. */
+.strip-seg.admin,      .strip-now-dot.admin      { background: #5b6472; }
+.strip-seg.motivation, .strip-now-dot.motivation { background: #d9a441; }
+.strip-seg.definition, .strip-now-dot.definition { background: #4fbf90; }
+.strip-seg.theorem,    .strip-now-dot.theorem    { background: #8f7fe8; }
+.strip-seg.proof,      .strip-now-dot.proof      { background: #5b9de0; }
+.strip-seg.example,    .strip-now-dot.example    { background: #e0854a; }
+.strip-seg.aside,      .strip-now-dot.aside      { background: #7d8590; }
 
 .strip-playhead {
   position: absolute;
@@ -630,6 +631,31 @@ kbd {
   width: 2px;
   background: #fff;
   pointer-events: none;
+}
+
+/* Off on a wide screen, where the strip labels itself. Turned on below,
+   at the width where those labels stop fitting. */
+.strip-now { display: none; }
+
+.strip-now-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  flex: none;
+  background: var(--fg-dim);
+}
+
+.strip-now-time {
+  color: var(--fg-dim);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+
+.strip-now-title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ------------------------------------------------------------ library --- */
@@ -865,6 +891,23 @@ kbd {
   /* Four tabs across a phone; "Formulas" is the first word to give. */
   .mtab { font-size: 12px; padding: 11px 2px; }
   .course-title { font-size: 18px; }
+
+  /* Same breakpoint as the phone layout above, not the 520px one that hides
+     the strip's labels: between the two the labels survive but are ellipsised
+     down to a word or two, and a touch screen has no tooltip to recover the
+     rest from. */
+  .strip-now {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: none;
+    min-height: 30px;
+    padding: 5px 12px;
+    background: var(--bg-sunken);
+    border-bottom: 1px solid var(--line);
+    font-size: 12.5px;
+    color: var(--fg);
+  }
 
   .seg { gap: 9px; }
   .seg-time { width: 46px; font-size: 12px; }
