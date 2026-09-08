@@ -139,6 +139,19 @@
         sel.appendChild(o);
       });
     }
+    var win = $("opt-windowing");
+    if (models.windowing && !win.options.length) {
+      models.windowing.choices.forEach(function (c) {
+        var o = document.createElement("option");
+        o.value = c.id;
+        o.textContent = c.label;
+        if (c.id === models.windowing.current) o.selected = true;
+        win.appendChild(o);
+      });
+      win.addEventListener("change", windowingNote);
+      windowingNote();
+    }
+
     var box = $("opt-stages");
     if (!box.children.length) {
       models.stages.forEach(function (s) {
@@ -151,7 +164,9 @@
         lab.appendChild(document.createTextNode(s.label));
         box.appendChild(lab);
       });
+      box.addEventListener("change", syncWindowingField);
     }
+    syncWindowingField();
   }
 
   function chosenStages() {
@@ -159,8 +174,32 @@
              .map(function (c) { return c.value; });
   }
 
+  // Topic mode embeds the transcript before writing anything, which is a
+  // different failure mode from the rest of the pass -- worth saying so here
+  // rather than leaving it to the job log.
+  function windowingNote() {
+    var topic = $("opt-windowing").value === "topic";
+    $("opt-windowing-note").textContent = topic
+      ? "Embeds the transcript first, through the same local model as search. "
+        + "Falls back to fixed windows if that is not loaded."
+      : "";
+  }
+
+  // The choice only reaches the notes pass, so it only makes sense while that
+  // step is ticked.
+  function syncWindowingField() {
+    var f = $("opt-windowing-field");
+    if (!f) return;
+    var notes = $("opt-stages").querySelector('input[value="notes"]');
+    f.hidden = !(notes && notes.checked);
+  }
+
   function chosenOptions() {
-    return { model: $("opt-model").value, force: $("opt-force").checked };
+    return {
+      model: $("opt-model").value,
+      windowing: $("opt-windowing").value,
+      force: $("opt-force").checked
+    };
   }
 
   // ------------------------------------------------------------ lectures ---

@@ -302,6 +302,17 @@ class Handler(BaseHTTPRequestHandler):
                 ],
                 "stages": [{"id": k, "label": v[0]} for k, v in jobs_mod.STAGES.items()],
                 "default_stages": jobs_mod.DEFAULT_STAGES,
+                "windowing": {
+                    "current": str(cfg.get("notes", {}).get("windowing", "fixed")),
+                    "choices": [
+                        {"id": "fixed",
+                         "label": "Every %d min — simple, offline"
+                                  % round(float(cfg.get("notes", {})
+                                                .get("window_s", 360)) / 60)},
+                        {"id": "topic",
+                         "label": "By topic — cut where the subject changes"},
+                    ],
+                },
             }, extra_headers=setcookie)
 
         return self._error(404, "unknown endpoint")

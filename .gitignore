@@ -1,3 +1,4 @@
+# ---- environment ----
 .venv/
 models/
 tools/
@@ -5,13 +6,26 @@ logs/
 __pycache__/
 *.pyc
 
-# Derived artifacts. Regenerate with the pipeline; don't version them.
-data/*/*/audio16k.wav
-data/*/*/audio.opus
-data/*/*/lecture.js
-data/*/lectures.js
-index/*/vectors/
-logs/jobcfg/
-audio/*/.upload-*.part
-# Holds your OpenRouter key. Never commit it.
+# ---- your key ----
+# start.cmd holds an OpenRouter API key. start.cmd.example is the template
+# that is tracked in its place.
 start.cmd
+
+# ---- your lectures ----
+# Recordings, transcripts and everything derived from them stay on your
+# machine. They are someone's copyrighted teaching, they can carry incidental
+# classroom audio, and a couple of lectures outweigh the entire codebase.
+# Every file under these is reproducible from the audio you put in.
+audio/*
+!audio/.gitkeep
+data/*
+!data/.gitkeep
+index/*
+!index/.gitkeep
+
+# Per-installation state, all of it generated: the registry names the courses
+# you created, and `ensure_course` writes each course's starter notation.md
+# and glossary.json from the template in scripts/common.py.
+courses.json
+courses/*
+!courses/.gitkeep

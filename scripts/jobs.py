@@ -173,10 +173,16 @@ class Runner:
         overrides = {}
         model = str(job.options.get("model") or "").strip()
         backend = str(job.options.get("backend") or "").strip()
+        windowing = str(job.options.get("windowing") or "").strip()
         if model:
             overrides.setdefault("asr", {})["model"] = model
         if backend:
             overrides.setdefault("asr", {})["backend"] = backend
+        # Whitelisted rather than passed through: this lands in a config file
+        # a subprocess reads, and the only two values the notes pass knows how
+        # to act on are these.
+        if windowing in ("fixed", "topic"):
+            overrides.setdefault("notes", {})["windowing"] = windowing
         if not overrides:
             return None
 

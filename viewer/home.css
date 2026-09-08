@@ -135,6 +135,20 @@ body.home {
 
 .field select:focus, .field input:focus { outline: none; border-color: var(--accent); }
 
+/* A sentence under a control, not a second label for it. Needs `.field >` to
+   outrank the uppercase label rule above, and collapses when it has nothing
+   to say so the gap goes with it. */
+.field > .field-note {
+  margin: 6px 0 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fg-dim);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.field > .field-note:empty { display: none; }
+
 .checks { display: flex; flex-wrap: wrap; gap: 10px 16px; }
 .checks label, .check-inline {
   display: inline-flex;

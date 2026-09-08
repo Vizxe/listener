@@ -1,0 +1,63 @@
+@echo off
+setlocal
+title Lecture listener
+
+rem =========================================================================
+rem  TEMPLATE -- copy it to start.cmd, which is gitignored, and put your key
+rem  in the line below:
+rem
+rem      copy start.cmd.example start.cmd
+rem
+rem  Then double-click start.cmd to bring the site up.
+rem
+rem  start.cmd is gitignored BECAUSE your OpenRouter key goes in it. Do not
+rem  commit it, do not paste it into a bug report, and do not put it anywhere
+rem  that syncs somewhere public.
+rem
+rem  The key is only used by Stage 2C (course notes) -- the one stage that
+rem  leaves this machine. Everything else is local and works fine with the
+rem  line below left exactly as it is.
+rem
+rem  To set it: right-click this file -> Edit, and replace paste-your-key-here
+rem  with your key from https://openrouter.ai/keys. Keep the quotes.
+rem =========================================================================
+
+set "OPENROUTER_API_KEY=paste-your-key-here"
+
+rem --- nothing past here needs editing -------------------------------------
+
+cd /d "%~dp0"
+
+rem An unreplaced placeholder is worse than no key at all: it would reach
+rem OpenRouter and come back a 401, instead of the pipeline saying plainly
+rem that no key is set.
+if "%OPENROUTER_API_KEY%"=="paste-your-key-here" (
+  echo.
+  echo   No OpenRouter key set yet, so Course notes will be unavailable.
+  echo   Everything else works. Right-click this file, choose Edit, and
+  echo   replace paste-your-key-here to turn it on.
+  echo.
+  set "OPENROUTER_API_KEY="
+)
+
+set "PY=%~dp0.venv\Scripts\python.exe"
+if not exist "%PY%" set "PY=python"
+
+where /q "%PY%" 2>nul || if not exist "%PY%" (
+  echo.
+  echo   No Python found. Create the virtualenv first:
+  echo       python -m venv .venv
+  echo       .venv\Scripts\python.exe -m pip install -r requirements.txt
+  echo.
+  pause
+  exit /b 1
+)
+
+rem --open launches the browser once the port is listening, with the access
+rem key already in the URL. Anything you pass to this file is forwarded on,
+rem so `start.cmd --port 9000` works.
+"%PY%" "%~dp0scripts\server.py" --open --no-auth%*
+
+echo.
+echo   The server has stopped.
+pause

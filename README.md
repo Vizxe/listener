@@ -1,37 +1,157 @@
-# Lecture Processing Pipeline
+# Lecture Listener
 
-Turns a folder of math lecture recordings into a synced viewer and, later, a
-searchable cross-lecture library.
+**Recorded maths lectures in. A clickable transcript, exam-ready notes and a
+searchable course index out.** Whisper on the GPU, an LLM pipeline on top, and
+a viewer with no framework and no build step.
 
-**Status: all stages built, driven from the browser.** Upload a lecture, pick
-how to process it, watch it run, read the notes, search the course.
+![The viewer: transcript, chapter strip and notes, all following playback](docs/viewer.png)
+
+Drop in an mp3. It transcribes with word-level timestamps, converts spoken
+maths to LaTeX, writes student notes anchored to the audio, splits the lecture
+into chapters, and builds a hybrid search index across the whole course. Then
+it serves the viewer above, where transcript, notes and formulas all follow
+playback and every note is one click from the second it was said.
+
+Runs entirely on one machine: Whisper through OpenVINO, the language model
+through any OpenAI-compatible endpoint. One optional stage calls a cloud
+model; it is off by default.
+
+<sub>Python 3.10+ · no frontend framework · no build step · 7 runtime
+dependencies · ~9,000 lines</sub>
+
+---
+
+## What was actually hard
+
+The five problems worth reading about. Each links to the full write-up further
+down.
+
+### 1. Running Whisper on an Intel Arc GPU
+
+The standard stack — WhisperX on faster-whisper — is CUDA-only, because
+CTranslate2 has no Intel backend. Stage 1 was rebuilt against **OpenVINO
+GenAI** behind a backend interface, so both paths coexist and one line of
+config picks between them. **8.8x realtime** at `large-v3` on an Arc B580.
+
+Then the counter-intuitive part: I kept the *slower* model. Turbo is 4x
+faster, but its errors land on the symbols — `epsilon` transcribed as
+`hexagon` — and symbol errors are the one kind a maths pipeline cannot
+absorb. → [The GPU situation](#the-gpu-situation-resolved),
+[Why large-v3 and not turbo](#why-large-v3-and-not-turbo)
+
+### 2. A sync bug that was not in my code
+
+Clicking a word seeked to the wrong moment, and drifted further out the later
+in the lecture you clicked. The cause was not the viewer: browsers seeking a
+long **VBR MP3** interpolate position from its 100-entry Xing index. Measured
+**1.85 s average error, 5.76 s worst case** across a 48-minute file.
+
+The fix was to stop serving the MP3 at all. The pipeline now transcodes to Ogg
+Opus, which seeks by granule position: **0.02 s**. →
+[Why the viewer does not play your MP3](#why-the-viewer-does-not-play-your-mp3)
+
+### 3. The model is never asked for a timestamp
+
+Every note and formula the model produces must quote the transcript verbatim.
+That quote is then located back in the word stream with a token-level diff,
+and the timestamp comes from the words that matched — never from the model.
+Below a match ratio the item is pinned to its window and flagged in the UI as
+*approx. time*.
+
+So a hallucination cannot quietly acquire a real timestamp: it fails the
+lookup and says so. → [The model is never asked for
+timestamps](#the-model-is-never-asked-for-timestamps)
+
+### 4. A measured negative result
+
+Intuition says handing the notes model the whole lecture as background should
+make the notes more coherent. I benchmarked four context modes and it made
+them **worse** — with everything in view the model drifted into re-summarising
+the lecture instead of writing about its own six minutes.
+
+The default is now "everything before this point", which measured best. The
+experiment and the numbers are written up rather than quietly discarded. →
+[How much the model should see](#how-much-the-model-should-see)
+
+### 5. Topic segmentation with no LLM
+
+Cutting notes every six minutes is arbitrary — a 90-second definition gets the
+same slot as a twelve-minute proof. So there is a mode that cuts where the
+lecture changes subject: **TextTiling with embeddings**, scoring valleys in a
+cosine-similarity curve by depth and snapping each cut to the nearest pause in
+the audio.
+
+Windows come out **2.4–10 minutes** instead of a flat 6, and **4 of 6** chapter
+boundaries derived independently downstream land within 45 s of a cut. No
+model call, and it falls back to fixed windows if the embedding endpoint is
+down. → [Cutting by topic instead of by the
+clock](#cutting-by-topic-instead-of-by-the-clock)
+
+---
+
+## The pipeline
+
+Six stages, each a standalone CLI writing one JSON file. The web UI runs them
+as subprocesses, so what the browser triggers is exactly the command you would
+have typed — and a segfault in a native runtime cannot take the server down.
+
+| Stage | Does | Output |
+|---|---|---|
+| **1 · Transcribe** | Whisper `large-v3` on the GPU, word-level timestamps, vocabulary biased per course | `transcript.json` |
+| **2 · Maths** | Spoken maths → validated LaTeX, anchored to the second it was said | `math.json` |
+| **2N · Notes** | Student notes, windowed by clock or by topic | `notes.json` |
+| **2C · Course notes** | *Optional, cloud.* One call reads the whole lecture and writes it up as a document | `course_notes.json` |
+| **3 · Chapters** | The lecture divided into titled chapters, read from the notes rather than the transcript | `structure.json` |
+| **6 · Index** | BM25 + embeddings fused with reciprocal rank, plus a deterministic concept index across every lecture | `chunks.jsonl`, `vectors/` |
+
+The viewer is ~2,100 lines of plain JavaScript — no framework, no bundler, no
+`node_modules`. It opens straight off disk as well as over HTTP, renders maths
+with vendored KaTeX, and builds every note from text nodes rather than
+`innerHTML` so model output cannot inject markup.
+
+---
+
+## Quickstart
 
 ```bash
+python -m venv .venv
+.venv/Scripts/python.exe -m pip install -r requirements.txt
 .venv/Scripts/python.exe scripts/server.py
 ```
 
-Then open the URL it prints. It binds `0.0.0.0`, so the same URL works from a
-phone or laptop over Tailscale -- the startup banner lists your Tailscale
-address directly.
+Open the URL it prints, create a course, drop in an mp3, and tick which steps
+to run. On Windows, copy `start.cmd.example` to `start.cmd` for a
+double-click launcher.
 
-Everything is **per course**. MAT267's lectures, notation and concept index are
-separate from any other course's, and nothing is shared between them.
+**You will also need** ffmpeg on `PATH`, and an OpenAI-compatible endpoint for
+everything past transcription — [LM Studio](https://lmstudio.ai) or
+[Ollama](https://ollama.com) on `localhost:1234` by default, with a chat model
+and an embedding model loaded. A GPU helps but is not required; see
+[Choosing a backend](#choosing-a-backend). Budget roughly 16 GB of RAM —
+Whisper and the language model are deliberately never resident at once.
+
+**A fresh clone is code only.** `audio/`, `data/`, `index/` and `courses/` are
+gitignored: they hold recordings, transcripts and everything derived from
+them, which is your material and, in a lecture hall, someone else's teaching.
+Everything is per course — one course's lectures, notation and concept index
+are separate from another's.
 
 ---
 
 ## The GPU situation, resolved
 
-The brief specced WhisperX with the faster-whisper `large-v3` backend at
-float16 on the GPU. That specific stack cannot run here: this machine has an
-**Intel Arc B580 (12 GB)**, and faster-whisper runs on CTranslate2, which
-targets **CPU and NVIDIA CUDA only**.
+The obvious stack for this is WhisperX with the faster-whisper `large-v3`
+backend at float16 on the GPU. It cannot run on an **Intel Arc**:
+faster-whisper runs on CTranslate2, which targets **CPU and NVIDIA CUDA
+only**. If you have an NVIDIA card, that stack is still the faster road and
+the `faster_whisper` backend is here for you.
 
 **But the GPU is not lost.** OpenVINO runs Whisper on the Arc perfectly well.
 OpenVINO reports the card as a discrete GPU with 11.6 GiB usable and
 `FP16 / INT8 / GPU_HW_MATMUL` support, and OpenVINO GenAI's ASR pipeline
 supports the word-level timestamps this project depends on.
 
-Measured on this machine against your real 48-minute lecture 11, on the Arc:
+Measured on an **Intel Arc B580 (12 GB)** against a real 48-minute lecture:
 
 | Model | Wall clock | Speed | Words |
 |---|---|---|---|
@@ -44,26 +164,26 @@ the accurate one rather than the fast one -- see
 [Why large-v3 and not turbo](#why-large-v3-and-not-turbo).
 
 One knock-on effect worth naming: the original reason for the strict Phase A /
-Phase B split was Whisper and the LLM competing for VRAM. They still both want
-the Arc now, so keeping them apart still makes sense -- but your tighter
-overall budget is **16 GB of system RAM**.
+Phase B split was Whisper and the language model competing for VRAM. Both still
+want the GPU, so keeping them apart still makes sense -- but on a machine like
+this the tighter budget is **system RAM**, not VRAM.
 
 ---
 
 ## Layout
 
 ```
-audio/<course>/         raw lecture files (uploads land here)
+audio/<course>/         raw lecture files (uploads land here)   [gitignored]
 config.yaml             every tunable lives here
-courses.json            the course registry
-courses/<course>/
+courses.json            the course registry                     [gitignored]
+courses/<course>/                                               [gitignored]
   notation.md           vocabulary + conventions, editable from the site
   glossary.json         accumulated corrections
-index/<course>/
+index/<course>/                                                 [gitignored]
   concepts.json         concept -> every occurrence, canonical marked
   chunks.jsonl          retrieval chunks (one per chapter, long ones split)
   vectors/              embeddings + ids
-data/<course>/<lecture_id>/
+data/<course>/<lecture_id>/                                     [gitignored]
   transcript.json       Stage 1 output
   math.json             Stage 2 output  (formulas)
   notes.json            Stage 2N output (student notes)
@@ -78,7 +198,9 @@ viewer/                 static site: open viewer.html directly
 scripts/                the pipeline
 models/ov-cache/        compiled OpenVINO kernels (cuts startup 23s -> 2s)
 logs/                   per-stage run logs
-start.cmd               double-click launcher; holds your key, gitignored
+start.cmd.example       double-click launcher for Windows -- copy to
+start.cmd                 start.cmd and add your key              [gitignored]
+LICENSE                 MIT
 ```
 
 ---
@@ -93,18 +215,29 @@ python -m venv .venv
 .venv/Scripts/python.exe -m pip install -r requirements.txt
 ```
 
-ffmpeg must be on PATH (it already is here). Models download from HuggingFace
-on first use.
+ffmpeg must be on `PATH`. Whisper models download from HuggingFace on first
+use and are cached under `models/`.
+
+You also need an OpenAI-compatible endpoint for Stages 2 onward -- LM Studio or
+Ollama on `localhost:1234`, with a chat model and an embedding model loaded.
+The defaults in `config.yaml` are `qwen/qwen3.5-9b` and
+`text-embedding-nomic-embed-text-v1.5`; any comparable pair works.
 
 ### start.cmd
 
-Double-click `start.cmd` in the project root to bring the site up: it exports
-your OpenRouter key, starts the server on the venv's Python, and opens the
-browser with the access key already in the URL. Anything you pass it is
-forwarded on, so `start.cmd --port 9000` works.
+A double-click launcher for Windows. Copy the tracked template and put your
+key in it:
 
-**It is gitignored, because the key lives in it** -- which also means a fresh
-clone will not have one. Recreate it with the two lines that matter:
+```bash
+copy start.cmd.example start.cmd
+```
+
+Then double-clicking `start.cmd` exports the key, starts the server on the
+venv's Python, and opens the browser with the access key already in the URL.
+Anything you pass it is forwarded on, so `start.cmd --port 9000` works.
+
+**`start.cmd` itself is gitignored, because the key lives in it.** The two
+lines that matter, if you would rather write your own:
 
 ```bat
 set "OPENROUTER_API_KEY=sk-or-v1-..."
@@ -161,7 +294,7 @@ or a local directory:
 
 ### Why large-v3 and not turbo
 
-Both were run over your 48-minute lecture 11. turbo took 87 s, large-v3 took
+Both were run over the same 48-minute lecture. turbo took 87 s, large-v3 took
 329 s. Both are fine; neither is a bottleneck. But turbo makes the kind of
 mistake this project cannot absorb, because the errors land on the symbols:
 
@@ -212,8 +345,8 @@ LM Studio.
 anything that serves an OpenAI-compatible API; the code does not care whether
 that is LM Studio or a cloud endpoint. Currently configured for LM Studio at
 `http://localhost:1234/v1` with `qwen/qwen3.5-9b`, and
-`text-embedding-nomic-embed-text-v1.5` for embeddings -- both confirmed loaded
-on your server.
+`text-embedding-nomic-embed-text-v1.5` for embeddings. Any comparable pair
+works; nothing in the code is specific to those two.
 
 **Phase B2 -- the one that leaves the machine.** Stage 2C only, configured
 separately under `openrouter:`. Opt-in per run and absent from the default
@@ -341,21 +474,37 @@ says "epsilon, delta". Removals are logged and counted in
 
 ---
 
-## Demo lectures in `audio/`
+## Your first lecture
 
-Two files are present so you can open the viewer before you have real
-transcripts:
+A fresh clone ships no audio and no transcripts -- see
+[Quickstart](#quickstart). The quickest path to something on screen:
 
-- `selftest-demo.wav` -- a tone with a hand-written transcript (has `conf`
-  data, so it shows the low-confidence markers).
-- `ttscheck-demo.wav` -- synthesised speech with known content, used to verify
-  the ASR path end to end.
+1. Start the server and create a course from the home page.
+2. Drop an mp3, m4a or mp4 onto the upload box. Video is accepted and its
+   audio track taken.
+3. Leave the default steps ticked and let it run. A 50-minute lecture is a few
+   minutes of GPU time, then a few more for the notes.
+4. Open the viewer.
 
-Delete both once you have real lectures:
+Or from the command line, with the file already in `audio/<course>/`:
 
 ```bash
-rm audio/selftest-demo.wav audio/ttscheck-demo.wav && rm -rf data/selftest-demo data/ttscheck-demo
+.venv/Scripts/python.exe scripts/stage1_transcribe.py --course MAT267 --all
+.venv/Scripts/python.exe scripts/stage2_notes.py     --course MAT267 --all
+.venv/Scripts/python.exe scripts/stage3_structure.py --course MAT267 --all
+.venv/Scripts/python.exe scripts/stage6_index.py     --course MAT267
 ```
+
+Before you process a whole course, spend ten minutes on
+`courses/<course>/notation.md`. It is the highest-leverage file in the
+project -- see [Vocabulary biasing](#vocabulary-biasing).
+
+**A word on other people's lectures.** Recording a lecture, transcribing it
+and keeping it for yourself is one thing; publishing the result is another.
+The recording is usually the lecturer's copyright, it can catch students who
+never agreed to be recorded, and the transcripts this produces are verbatim.
+Check your institution's rules, and keep the output where the `.gitignore`
+puts it.
 
 ---
 
@@ -434,10 +583,12 @@ concepts it holds, and flags anything sitting unprocessed.
   audio track is taken automatically -- an mp4 lecture recording works fine.
   Upload goes to a `.part` file and is renamed only on success, so an
   interrupted transfer never looks like a lecture waiting to be processed.
-- **Choose how to process it**: which transcription model, which steps to run
-  (transcribe / formulas / notes / chapters / search index), and whether to
+- **Choose how to process it**: which transcription model, how to split the
+  notes (every six minutes, or by topic), which steps to run (transcribe /
+  formulas / notes / course notes / chapters / search index), and whether to
   redo steps that already have output. Processing starts automatically once an
-  upload finishes.
+  upload finishes. The splitting choice only appears while **Notes** is
+  ticked, since it reaches nothing else.
 - **Watch it run.** Progress, the current step and a live log. The log follows
   new output while you are at the bottom and holds still the moment you scroll
   up to read something, the way a terminal does. Jobs run **one at a time** --
@@ -549,7 +700,7 @@ and Stage 2N prompt, so a fix made in lecture 11 conditions lecture 12.
 .venv/Scripts/python.exe scripts/stage3_structure.py --course MAT267 --lecture 20260213-lecture11
 ```
 
-One pass, one output, as the brief asked -- but it reads the **notes**, not the
+One pass, one output -- but it reads the **notes**, not the
 raw transcript. Stage 2N has already compressed the lecture 3.4x and given
 every block a heading and a span, so a 48-minute lecture becomes ~34 headings
 that fit in a single prompt. Nothing to chunk, nothing to reconcile, and the
@@ -641,6 +792,9 @@ Windows are **six minutes** here against Stage 2's ninety seconds. Summarising
 needs context where extraction needs precision -- you cannot write a coherent
 note about a proof while looking through a ninety-second slot.
 
+Six minutes is still an arbitrary number, though, and `notes.windowing: topic`
+replaces it with cuts taken from the lecture itself. See below.
+
 Each block carries a `heading`, a `kind` (definition / theorem / proof /
 example / method / remark / admin), a body in light markdown with inline
 `$maths$`, and one to three `key_points`.
@@ -704,6 +858,78 @@ to switch to.
 None of this is a context-*window* limit -- 98k fits comfortably and every run
 completed cleanly. It is a 9B's effective attention span. On a larger model the
 balance would likely tip the other way.
+
+### Cutting by topic instead of by the clock
+
+Pick it per upload on the course page, under **How to split the notes** --
+or set the default in `config.yaml` and override it per run from the CLI:
+
+```yaml
+notes:
+  windowing: topic
+```
+
+```bash
+.venv/Scripts/python.exe scripts/stage2_notes.py --course MAT267 --lecture 20260213-lecture11 --windowing topic --force
+```
+
+The web UI reaches the same setting the way every other per-run option does --
+through the scratch config in `logs/jobcfg/`, never by editing `config.yaml`.
+The value is whitelisted to `fixed` or `topic` on the way in rather than
+passed through, because it ends up in a config file a subprocess reads.
+
+Equal windows are a compromise and it shows: a ninety-second definition gets
+the same slot as a twelve-minute proof, boundaries land mid-sentence, and the
+sixty-second overlap exists only to catch the ideas those boundaries cut in
+half. `topic` mode cuts where the lecture changes subject instead, and drops
+the overlap, because a boundary chosen not to split an idea has nothing to
+catch.
+
+**Stage 3's chapters cannot be reused for this.** Stage 3 reads `notes.json`,
+so it does not exist until Stage 2N has already run. The boundaries have to
+come from the transcript, before any model has read it.
+
+`scripts/segment.py` does that with TextTiling, using embeddings in place of
+the original's word-overlap score, and **no LLM at all**:
+
+1. Cut the word stream into 30s blocks -- measurement granularity, not
+   windows.
+2. Embed each block through the same local endpoint Stage 6 already uses.
+3. At every block boundary compare the mean embedding of the four blocks
+   before with the four after. Developing one idea keeps the two close;
+   changing subject pulls them apart.
+4. Score each valley by **depth** -- how far it falls from the peaks either
+   side -- not by absolute similarity. A dense proof is more self-similar
+   throughout than a rambling revision session, and depth is what survives
+   that difference. A lecture that never changes subject has a flat curve and
+   few deep valleys, which is the right answer for it.
+5. Keep the valleys past `mean + threshold * stdev`, then snap each to the
+   largest pause within 20s. Lecturers stop talking when they change subject,
+   so this lands the cut in silence instead of mid-sentence.
+
+`min_seconds` and `max_seconds` then apply. The cap is not a hedge: a topic
+really can run twenty minutes, and one note for it would be exactly the
+failure the six-minute window was avoiding. Over-long stretches are split at
+the best valley that missed the cutoff, or at the longest pause near the
+midpoint if the curve offers nothing.
+
+Nothing here invents a timestamp -- every boundary is the start time of a real
+word -- and nothing here blocks a run: if the embedding endpoint is down it
+logs, falls back to fixed windows, and records which it used in
+`meta.windowing`.
+
+**Measured on the two lectures here.** Windows come out 2.4-10 minutes instead
+of a uniform 6, and the cuts land where the lecture turns: on lecture 20, four
+of Stage 3's six chapter boundaries -- derived independently, from the notes
+-- fall within 45s of a topic cut, three of them within 33s. The first words
+of each window are the giveaway that the pause-snapping works: "Okay. I should
+say one terminology.", "So now let's think of first a few examples.", "Okay.
+Comment. This is the same proof as this." Those are lecturers changing
+subject, and a fixed window would have cut ninety seconds either side of them.
+
+`meta.window_seconds` records the min, median and max per lecture, because in
+this mode they differ every run and they are the evidence the cuts followed
+the lecture rather than a clock.
 
 ### Rendering
 
@@ -873,24 +1099,37 @@ key from, and `headers.referer` / `headers.title` become `HTTP-Referer` and
 
 ---
 
-## Still open
+## Known limitations
 
-Nothing in the brief is unbuilt, but three things are worth your attention:
-
-- **`course/notation.md` is still my starter list.** It is the highest-leverage
-  knob in the pipeline and it should be yours.
+- **`courses/<course>/notation.md` starts as a generic template.** It is the
+  highest-leverage knob in the pipeline and it is meant to be rewritten for
+  your course.
 - **Stage 2's `kind` collapses** -- 88 of 92 formulas come back as
   `expression`. Stage 3 and the concept index lean on chapter types rather
   than formula types, so this matters less than it did, but it is still wrong.
-- **Only one real lecture exists.** Every `--all` path works but has never run
-  over a batch.
+- **Tested against two lectures of one course.** Every `--all` path works but
+  has never run over a large batch, and every measurement quoted here comes
+  from the same two recordings.
 - **Stage 2C has been run against a stub, not a real model.** Every path
   around the call is exercised -- prompt assembly, the `covers` mapping, both
   fallbacks, the index, the pane -- but the prompt itself has not been tuned
   against real output the way Stage 2N's was, and the section count and
   granularity are guesses until it has.
-- **The access key is the entire security model.** Fine behind Tailscale; do
-  not expose this to the open internet.
+- **The access key is the entire security model.** There are no user
+  accounts, no TLS and no rate limiting. It is fine on a home network or
+  behind Tailscale. **Do not put this on the open internet.**
+
+---
+
+## Licence
+
+[MIT](LICENSE).
+
+KaTeX, vendored under `viewer/vendor/katex/`, is MIT licensed and remains the
+copyright of its authors.
+
+Nothing in this repository is a licence to redistribute lecture recordings or
+transcripts you produce with it.
 
 ---
 

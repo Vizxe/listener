@@ -35,6 +35,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import common  # noqa: E402
 import merge  # noqa: E402
+import segment  # noqa: E402
 from llm import LLM  # noqa: E402
 from stage2_math import build_windows, locate, course_context, window_text  # noqa: E402
 
@@ -335,7 +336,8 @@ def dedupe(blocks, tolerance: float = 90.0, body_similarity: float = 0.72):
     return kept
 
 
-def process_lecture(cfg, course_id, lecture_id, logger, force=False, window_range=None):
+def process_lecture(cfg, course_id, lecture_id, logger, force=False,
+                    window_range=None, windowing=None):
     d = common.lecture_dir(cfg, course_id, lecture_id, create=False)
     tpath = d / "transcript.json"
     if not tpath.exists():
@@ -361,13 +363,25 @@ def process_lecture(cfg, course_id, lecture_id, logger, force=False, window_rang
                     lecture_id)
 
     n = cfg.get("notes", {})
-    windows = build_windows(words, float(n.get("window_s", 360)),
-                            float(n.get("overlap_s", 60)))
+
+    # How the lecture is cut into the stretches one note is written about.
+    # `fixed` is equal windows; `topic` cuts where the subject changes and
+    # falls back to `fixed` when it cannot, so this never blocks a run.
+    windowing = str(windowing or n.get("windowing", "fixed")).lower()
+    windows = None
+    if windowing == "topic":
+        windows = segment.topic_windows(cfg, words, logger, lecture_id)
+        if windows is None:
+            windowing = "fixed (topic segmentation unavailable)"
+    if windows is None:
+        windows = build_windows(words, float(n.get("window_s", 360)),
+                                float(n.get("overlap_s", 60)))
+        logger.info("%s: %d fixed window(s) of %.0fs", lecture_id, len(windows),
+                    float(n.get("window_s", 360)))
+
     if window_range:
         lo, hi = window_range
         windows = [w for w in windows if w["t1"] >= lo and w["t0"] <= hi]
-    logger.info("%s: %d window(s) of %.0fs", lecture_id, len(windows),
-                float(n.get("window_s", 360)))
 
     llm = LLM(cfg, logger)
     ctx = course_context(cfg, course_id)
@@ -435,15 +449,26 @@ def process_lecture(cfg, course_id, lecture_id, logger, force=False, window_rang
     blocks = dedupe(blocks)
     words_written = sum(len(b["body"].split()) for b in blocks)
 
+    spans = sorted((w["t1"] - w["t0"]) for w in windows) or [0]
+
     payload = {
         "lecture_id": lecture_id,
         "course_id": course_id,
         "blocks": blocks,
         "meta": {
             "model": cfg["llm"]["model"],
+            "windowing": windowing,
             "window_s": n.get("window_s", 360),
             "overlap_s": n.get("overlap_s", 60),
             "windows": len(windows),
+            # Worth recording per lecture rather than inferring from the
+            # config: in topic mode these differ every time, and they are the
+            # evidence that the cuts followed the lecture rather than a clock.
+            "window_seconds": {
+                "min": round(spans[0], 1),
+                "median": round(spans[len(spans) // 2], 1),
+                "max": round(spans[-1], 1),
+            },
             "windows_failed": failed,
             "used_math_items": len(math_items),
             "context_mode": mode,
@@ -498,6 +523,8 @@ def main() -> int:
     g.add_argument("--all", action="store_true")
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--window", help="only this time range, e.g. 600-1200 (prints, writes nothing)")
+    ap.add_argument("--windowing", choices=["fixed", "topic"], default=None,
+                    help="override notes.windowing for this run")
     ap.add_argument("--config", default=None)
     args = ap.parse_args()
 
@@ -521,7 +548,8 @@ def main() -> int:
 
     for lecture_id in ids:
         try:
-            result = process_lecture(cfg, args.course, lecture_id, logger, args.force, window_range)
+            result = process_lecture(cfg, args.course, lecture_id, logger,
+                                     args.force, window_range, args.windowing)
             if result is None:
                 report.record_skip(lecture_id)
             else:

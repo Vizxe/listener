@@ -175,8 +175,34 @@ math:
 # Windows are much larger than the math pass: summarising needs context, where
 # extraction needs precision.
 notes:
+  # How the lecture is cut into the stretches one note is written about.
+  #   fixed -- equal windows of window_s, overlapping by overlap_s. Simple and
+  #            offline, but the length is a compromise: a ninety-second
+  #            definition gets the same slot as a twelve-minute proof, and the
+  #            overlap exists only to catch ideas the boundaries cut in half.
+  #   topic -- cut where the lecture changes subject. No LLM; it embeds the
+  #            transcript in 30s blocks through the same local endpoint Stage 6
+  #            uses and cuts at the deep valleys in the similarity curve, then
+  #            snaps each cut to the nearest pause. window_s and overlap_s are
+  #            ignored. Falls back to fixed if the embedding endpoint is down.
+  windowing: fixed
   window_s: 360
   overlap_s: 60
+
+  # Only read when windowing is `topic`.
+  topic:
+    block_s: 30           # granularity of the similarity curve, not a window
+    context_blocks: 4     # blocks compared either side of each candidate cut
+    # Depth cutoff, in standard deviations above the mean valley depth. Higher
+    # means fewer, more confident cuts. 0 keeps every deeper-than-average
+    # valley; negative keeps nearly all of them.
+    threshold: 0.3
+    min_seconds: 120      # never cut a stretch shorter than this
+    # A topic really can run twenty minutes, and one note for it would be the
+    # failure the fixed window was avoiding. The cap stays.
+    max_seconds: 600
+    snap_window_s: 20     # look this far either way for a pause to cut on
+
   max_tokens: 6000
   # Hand the model the WHOLE lecture as background while still asking it to
   # write only its own window. It costs prompt tokens but the notes stop
